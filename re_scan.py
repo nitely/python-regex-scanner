@@ -1,6 +1,10 @@
 from sre_parse import Pattern, SubPattern, parse
 from sre_compile import compile as sre_compile
 from sre_constants import BRANCH, SUBPATTERN
+import sys
+
+
+_PY2 = sys.version_info[0] == 2
 
 
 class _ScanMatch(object):
@@ -67,7 +71,9 @@ class Scanner(object):
     def __init__(self, rules, flags=0):
         pattern = Pattern()
         pattern.flags = flags
-        pattern.groups = len(rules) + 1
+
+        for _ in range(len(rules)):
+            pattern.opengroup(None)
 
         _og = pattern.opengroup
         pattern.opengroup = lambda n: _og(n and '%s\x00%s' % (name, n) or n)
@@ -75,10 +81,17 @@ class Scanner(object):
         self.rules = []
         subpatterns = []
         for group, (name, regex) in enumerate(rules, 1):
+            gid = pattern.opengroup(None)
             last_group = pattern.groups - 1
             subpatterns.append(SubPattern(pattern, [
                 (SUBPATTERN, (group, parse(regex, flags, pattern))),
             ]))
+
+            if _PY2:
+                pattern.closegroup(gid)
+            else:
+                pattern.closegroup(gid, subpatterns[-1])
+
             self.rules.append((name, last_group, pattern.groups - 1))
 
         self._scanner = sre_compile(SubPattern(
